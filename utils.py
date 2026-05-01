@@ -148,7 +148,23 @@ def _get_gsheets_client():
     # st.secrets returns special objects that can cause issues with google-auth
     sa_raw = dict(gsheets_config["service_account"])
     raw_key = str(sa_raw.get("private_key", ""))
-    private_key = raw_key.replace("\\n", "\n").strip()
+    private_key = raw_key.replace("\\n", "\n").replace("\\r", "\r").strip()
+    
+    # Truly robust PEM reconstruction
+    header = "-----BEGIN PRIVATE KEY-----"
+    footer = "-----END PRIVATE KEY-----"
+    if header in private_key and footer in private_key:
+        b64 = private_key.split(header)[1].split(footer)[0]
+        # Since literal \n are replaced, we can safely strip all whitespace/newlines
+        import re
+        b64 = re.sub(r'\s+', '', b64)
+        # Add padding if the user's Streamlit Cloud secret is missing it
+        pad_len = len(b64) % 4
+        if pad_len:
+            b64 += "=" * (4 - pad_len)
+        # Re-chunk into 64-character lines
+        chunks = [b64[i:i+64] for i in range(0, len(b64), 64)]
+        private_key = f"{header}\n" + "\n".join(chunks) + f"\n{footer}\n"
 
     service_account_info = {
         "type": str(sa_raw.get("type", "")),
