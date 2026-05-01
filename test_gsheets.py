@@ -31,7 +31,7 @@ try:
     )
     gc = gspread.authorize(creds)
     
-    sheet_url = "https://docs.google.com/spreadsheets/d/1dYd6qOv-vMUkZ2MG_tVdhKnf5DOWE2lArKF1qe8Me5I/edit?gid=0#gid=0"
+    sheet_url = "https://docs.google.com/spreadsheets/d/1zCKp2Ja4EZkQ4nVFRL6nMIHj9yTYCuEsXHNs-3imkcI/edit?gid=0#gid=0"
     print(f"Attempting to open spreadsheet...")
     spreadsheet = gc.open_by_url(sheet_url)
     try:

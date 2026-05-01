@@ -58,13 +58,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# Auto-wipe ghost session state (disabled during debug)
-# if st.session_state.get("app_stage") == "complete" and st.session_state.get("is_gsheets_saved") is False:
-#     err = st.session_state.get("gsheets_fail_reason", "")
-#     if not err or "v10-save-ran" not in err:
-#         for key in list(st.session_state.keys()):
-#             del st.session_state[key]
-#         st.rerun()
 
 # ──────────────────────────────────────────────────────────────────────
 # Session state initialisation
@@ -460,7 +453,7 @@ def show_questionnaire():
 
     # ── Check if all questions are answered ──────────────────────────
     if q_idx >= len(all_q):
-        st.session_state.app_stage = "complete"
+        st.session_state.app_stage = "open_ended"
         st.session_state.needs_typing = True
         st.rerun()
         return
@@ -841,69 +834,36 @@ def show_open_ended():
 # ──────────────────────────────────────────────────────────────────────
 # Finalise and save
 # ──────────────────────────────────────────────────────────────────────
-def _completion_duration_seconds():
-    """Return survey duration in whole seconds, or an empty string if unavailable."""
-    if not st.session_state.started_at or not st.session_state.completed_at:
-        return ""
-
-    try:
-        start = datetime.fromisoformat(st.session_state.started_at)
-        end = datetime.fromisoformat(st.session_state.completed_at)
-        return str(int((end - start).total_seconds()))
-    except Exception:
-        return ""
-
-
-def _save_current_responses(include_local_backup=True):
-    """Save the current session responses and store the Google Sheets result."""
-    duration = _completion_duration_seconds()
-    save_kwargs = {
-        "participant_id": st.session_state.participant_id,
-        "group": st.session_state.group,
-        "responses": st.session_state.responses,
-        "started_at": st.session_state.started_at or "",
-        "completed_at": st.session_state.completed_at or "",
-        "duration_seconds": duration,
-    }
-
-    try:
-        if include_local_backup:
-            sheets_ok, error_msg = save_responses_to_csv(**save_kwargs)
-        else:
-            sheets_ok, error_msg = save_responses_to_google_sheets(**save_kwargs)
-    except Exception as e:
-        sheets_ok = False
-        error_msg = f"{type(e).__name__}: {e}\n\n{traceback.format_exc()}"
-
-    if not sheets_ok and not error_msg:
-        error_msg = (
-            "Google Sheets save returned False without an exception or error message. "
-            "This indicates an internal save helper bug; check the Streamlit Cloud logs "
-            "for the matching save attempt."
-        )
-
-    st.session_state.is_gsheets_saved = sheets_ok
-    st.session_state.gsheets_fail_reason = error_msg
-    return sheets_ok, error_msg
-
-
-def _needs_stale_gsheets_retry():
-    """Detect completion states created before the current save code ran."""
-    if st.session_state.get("is_gsheets_saved") is not False:
-        return False
-    if st.session_state.get("gsheets_retry_attempted"):
-        return False
-
-    error_msg = st.session_state.get("gsheets_fail_reason", "")
-    return not error_msg or "old code is still cached" in error_msg
-
-
 def _finalise_and_save():
-    """Persist responses to CSV and transition to the completion screen."""
+    """Persist responses to Google Sheets and local CSV, then show completion screen."""
     if not st.session_state.is_survey_finished:
         st.session_state.completed_at = datetime.now().isoformat()
-        _save_current_responses(include_local_backup=True)
+
+        duration = ""
+        if st.session_state.started_at:
+            try:
+                start = datetime.fromisoformat(st.session_state.started_at)
+                end = datetime.fromisoformat(st.session_state.completed_at)
+                duration = str(int((end - start).total_seconds()))
+            except Exception:
+                duration = ""
+
+        try:
+            sheets_ok, error_msg = save_responses_to_csv(
+                participant_id=st.session_state.participant_id,
+                group=st.session_state.group,
+                responses=st.session_state.responses,
+                started_at=st.session_state.started_at or "",
+                completed_at=st.session_state.completed_at,
+                duration_seconds=duration,
+            )
+        except Exception as e:
+            sheets_ok = False
+            error_msg = f"{type(e).__name__}: {e}"
+
         st.session_state.is_survey_finished = True
+        st.session_state.is_gsheets_saved = sheets_ok
+        st.session_state.gsheets_fail_reason = error_msg
 
     st.session_state.app_stage = "complete"
     st.rerun()
@@ -913,11 +873,7 @@ def _finalise_and_save():
 # SCREEN: Completion / Thank-you
 # ──────────────────────────────────────────────────────────────────────
 def show_completion():
-    if _needs_stale_gsheets_retry():
-        st.session_state.gsheets_retry_attempted = True
-        with st.spinner("Retrying cloud save..."):
-            _save_current_responses(include_local_backup=False)
-        st.rerun()
+    # Reset background to a calm finish gradient
 
     # Reset background to a calm finish gradient
     st.markdown(
@@ -930,20 +886,11 @@ def show_completion():
     group = st.session_state.group
     sheets_ok = st.session_state.get("is_gsheets_saved", True)
 
-    # Show detailed error FIRST (at top) if sheets failed
     if not sheets_ok:
         err_detail = st.session_state.get('gsheets_fail_reason', 'Unknown error')
         if not err_detail:
-            err_detail = (
-                "Google Sheets save returned False without an exception or error message. "
-                "This indicates an internal save helper bug."
-            )
-        st.error("⚠️ Google Sheets save failed. Full error details:")
-        st.code(err_detail, language="text")
-        if st.button("Retry cloud save", key="retry_gsheets_save", use_container_width=True):
-            with st.spinner("Retrying cloud save..."):
-                _save_current_responses(include_local_backup=False)
-            st.rerun()
+            err_detail = "Google Sheets save returned False without an error message."
+        st.error(f"⚠️ Google Sheets save failed:\n\n{err_detail}")
 
     # Determine status-dependent styling
     if sheets_ok:
