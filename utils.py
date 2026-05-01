@@ -24,6 +24,7 @@ _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(_BASE_DIR, "data")
 ASSETS_DIR = os.path.join(_BASE_DIR, "assets")
 CSV_PATH = os.path.join(DATA_DIR, "responses.csv")
+RESPONSES_WORKSHEET_NAME = "responses_rp"
 
 
 # (Column definitions are now in questions.py → HORIZONTAL_COLUMNS)
@@ -247,6 +248,21 @@ def _horizontal_range(row_number: int, column_count: int) -> str:
     return f"A{row_number}:{rowcol_to_a1(row_number, column_count)}"
 
 
+def _get_responses_worksheet(spreadsheet):
+    """Open the preferred responses worksheet, falling back to the first tab."""
+    import gspread
+
+    try:
+        return spreadsheet.worksheet(RESPONSES_WORKSHEET_NAME)
+    except gspread.exceptions.WorksheetNotFound:
+        worksheet = spreadsheet.sheet1
+        print(
+            f"   ⚠️ Worksheet tab '{RESPONSES_WORKSHEET_NAME}' was not found; "
+            f"using first worksheet tab '{worksheet.title}' instead"
+        )
+        return worksheet
+
+
 def _save_to_google_sheets_horizontal(row_values: list) -> tuple:
     """
     Write a single horizontal row to the next available Google Sheets row.
@@ -266,9 +282,12 @@ def _save_to_google_sheets_horizontal(row_values: list) -> tuple:
             # Step 1: Get client
             operation = "connect to spreadsheet"
             gc, spreadsheet = _get_gsheets_client()
-            operation = "open first worksheet tab"
-            worksheet = spreadsheet.sheet1
-            print(f"   ✅ Connected. Sheet has {worksheet.row_count} rows, {worksheet.col_count} cols")
+            operation = f"open worksheet tab '{RESPONSES_WORKSHEET_NAME}' or first worksheet tab"
+            worksheet = _get_responses_worksheet(spreadsheet)
+            print(
+                f"   ✅ Connected to worksheet '{worksheet.title}'. "
+                f"Sheet has {worksheet.row_count} rows, {worksheet.col_count} cols"
+            )
 
             # Step 2: Check/write headers
             operation = "read header cell A1"

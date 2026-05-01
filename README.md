@@ -145,7 +145,7 @@ The application saves all responses to a Google Sheet in horizontal (one-row-per
 
 ## Data Output
 
-### Response Data (Google Sheets — Sheet1)
+### Response Data (Google Sheet `responses_rp` — first worksheet tab)
 
 | Column | Description |
 |---|---|
