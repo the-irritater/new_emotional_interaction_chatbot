@@ -56,14 +56,13 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# Auto-wipe ghost session state
-if st.session_state.get("app_stage") == "complete" and st.session_state.get("is_gsheets_saved") is False:
-    err = st.session_state.get("gsheets_fail_reason", "")
-    if not err or "v10-save-ran" not in err:
-        # If it's an old error, completely nuke the session state
-        for key in list(st.session_state.keys()):
-            del st.session_state[key]
-        st.rerun()
+# Auto-wipe ghost session state (disabled during debug)
+# if st.session_state.get("app_stage") == "complete" and st.session_state.get("is_gsheets_saved") is False:
+#     err = st.session_state.get("gsheets_fail_reason", "")
+#     if not err or "v10-save-ran" not in err:
+#         for key in list(st.session_state.keys()):
+#             del st.session_state[key]
+#         st.rerun()
 
 # ──────────────────────────────────────────────────────────────────────
 # Session state initialisation
@@ -931,7 +930,7 @@ def _finalise_and_save():
         except Exception as e:
             import traceback
             sheets_ok = False
-            error_msg = f"{type(e).__name__}: {e}\n\n{traceback.format_exc()}"
+            error_msg = f"[v10-save-ran] {type(e).__name__}: {e}\n\n{traceback.format_exc()}"
 
         # Also save local CSV backup
         try:
