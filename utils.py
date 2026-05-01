@@ -8,6 +8,7 @@ question list construction, and CSS injection.
 import base64
 import csv
 import os
+import re
 import uuid
 from datetime import datetime
 from collections import OrderedDict
@@ -146,7 +147,24 @@ def _get_gsheets_client():
     # Step 2: Build service account info — convert from Streamlit's AttrDict to plain dict
     # st.secrets returns special objects that can cause issues with google-auth
     sa_raw = dict(gsheets_config["service_account"])
-    private_key = str(sa_raw.get("private_key", "")).replace("\\n", "\n").strip()
+    raw_key = str(sa_raw.get("private_key", ""))
+    private_key = raw_key.replace("\\n", "\n").strip()
+    
+    # Robust PEM reconstruction for Streamlit Cloud
+    header = "-----BEGIN PRIVATE KEY-----"
+    footer = "-----END PRIVATE KEY-----"
+    if header in private_key and footer in private_key:
+        b64 = private_key.split(header)[1].split(footer)[0]
+        # Remove all whitespace and newlines injected by TOML parsing
+        b64 = re.sub(r'\s+', '', b64)
+        # Pad with '=' if trailing equals were stripped
+        pad_len = len(b64) % 4
+        if pad_len:
+            b64 += "=" * (4 - pad_len)
+        # Re-chunk into 64-character lines
+        chunks = [b64[i:i+64] for i in range(0, len(b64), 64)]
+        private_key = f"{header}\n" + "\n".join(chunks) + f"\n{footer}\n"
+
     service_account_info = {
         "type": str(sa_raw.get("type", "")),
         "project_id": str(sa_raw.get("project_id", "")),
