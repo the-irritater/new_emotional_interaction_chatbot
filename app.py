@@ -876,7 +876,14 @@ def _finalise_and_save():
             }
             for q_id, data in responses.items():
                 row_dict[q_id] = data["response"]
-            row_values = [str(row_dict.get(col, "")) for col in HORIZONTAL_COLUMNS]
+            # Clean and format row values safely to prevent NoneType API errors
+            row_values = []
+            for col in HORIZONTAL_COLUMNS:
+                val = row_dict.get(col)
+                if val is None:
+                    row_values.append("")
+                else:
+                    row_values.append(str(val))
 
             # Connect to Google Sheets
             gsheets_config = st.secrets["connections"]["gsheets"]
