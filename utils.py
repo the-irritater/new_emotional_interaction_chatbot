@@ -25,7 +25,7 @@ _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(_BASE_DIR, "data")
 ASSETS_DIR = os.path.join(_BASE_DIR, "assets")
 CSV_PATH = os.path.join(DATA_DIR, "responses.csv")
-RESPONSES_WORKSHEET_NAME = "responses_rp"
+RESPONSES_WORKSHEET_NAME = "Sheet1"
 
 
 # (Column definitions are now in questions.py → HORIZONTAL_COLUMNS)
@@ -149,21 +149,6 @@ def _get_gsheets_client():
     sa_raw = dict(gsheets_config["service_account"])
     raw_key = str(sa_raw.get("private_key", ""))
     private_key = raw_key.replace("\\n", "\n").strip()
-    
-    # Robust PEM reconstruction for Streamlit Cloud
-    header = "-----BEGIN PRIVATE KEY-----"
-    footer = "-----END PRIVATE KEY-----"
-    if header in private_key and footer in private_key:
-        b64 = private_key.split(header)[1].split(footer)[0]
-        # Remove all whitespace and newlines injected by TOML parsing
-        b64 = re.sub(r'\s+', '', b64)
-        # Pad with '=' if trailing equals were stripped
-        pad_len = len(b64) % 4
-        if pad_len:
-            b64 += "=" * (4 - pad_len)
-        # Re-chunk into 64-character lines
-        chunks = [b64[i:i+64] for i in range(0, len(b64), 64)]
-        private_key = f"{header}\n" + "\n".join(chunks) + f"\n{footer}\n"
 
     service_account_info = {
         "type": str(sa_raw.get("type", "")),
@@ -396,21 +381,6 @@ def _save_to_google_sheets_horizontal(row_values: list) -> tuple:
                 return False, error_msg, None
 
 
-def _save_to_csv_horizontal(row_values: list):
-    """Write a single horizontal row to the local CSV backup file."""
-    ensure_data_dir()
-    file_exists = os.path.isfile(CSV_PATH) and os.path.getsize(CSV_PATH) > 0
-
-    with open(CSV_PATH, "a", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        if not file_exists:
-            writer.writerow(HORIZONTAL_COLUMNS)
-            writer.writerow(HORIZONTAL_TITLES)
-        writer.writerow(row_values)
-
-    print(f"✅ Local CSV: Saved 1 horizontal row to {CSV_PATH}")
-
-
 def save_responses_to_google_sheets(
     participant_id: str,
     group: str,
@@ -431,31 +401,6 @@ def save_responses_to_google_sheets(
     return sheets_ok, error_msg
 
 
-def save_responses_to_csv(
-    participant_id: str,
-    group: str,
-    responses: dict,
-    started_at: str = "",
-    completed_at: str = "",
-    duration_seconds: str = "",
-) -> tuple:
-    """
-    Save all responses as a SINGLE horizontal row (one row per participant)
-    to BOTH Google Sheets AND local CSV.
-    Returns (sheets_ok, error_message).
-    """
-    row_values = _build_horizontal_row(
-        participant_id, group, responses,
-        started_at, completed_at, duration_seconds,
-    )
-
-    # Google Sheets (primary)
-    sheets_ok, error_msg, _ = _save_to_google_sheets_horizontal(row_values)
-
-    # Local CSV (backup)
-    _save_to_csv_horizontal(row_values)
-
-    return sheets_ok, error_msg
 
 
 

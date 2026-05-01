@@ -3,7 +3,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 import traceback
 
-WORKSHEET_NAME = "responses_rp"
+WORKSHEET_NAME = "Sheet1"
 
 try:
     with open(".streamlit/secrets.toml", "r") as f:
@@ -31,7 +31,7 @@ try:
     )
     gc = gspread.authorize(creds)
     
-    sheet_url = "https://docs.google.com/spreadsheets/d/1zCKp2Ja4EZkQ4nVFRL6nMIHj9yTYCuEsXHNs-3imkcI/edit?gid=0#gid=0"
+    sheet_url = "https://docs.google.com/spreadsheets/d/1zCKp2Ja4EZkQ4nVFRL6nMIHj9yTYCuEsXHNs-3imkcI/edit?pli=1&gid=0#gid=0"
     print(f"Attempting to open spreadsheet...")
     spreadsheet = gc.open_by_url(sheet_url)
     try:

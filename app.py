@@ -39,11 +39,9 @@ from utils import (
     build_question_list,
     get_section_list,
     get_likert_label,
-    save_responses_to_csv,
     save_responses_to_google_sheets,
     build_background_css,
     CUSTOM_CSS,
-    CSV_PATH,
     _load_bg_image_b64,
 )
 
@@ -849,7 +847,7 @@ def _finalise_and_save():
                 duration = ""
 
         try:
-            sheets_ok, error_msg = save_responses_to_csv(
+            sheets_ok, error_msg = save_responses_to_google_sheets(
                 participant_id=st.session_state.participant_id,
                 group=st.session_state.group,
                 responses=st.session_state.responses,
