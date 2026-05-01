@@ -11,6 +11,7 @@ Run:  streamlit run app.py
 import streamlit as st
 import time
 import importlib
+import traceback
 from datetime import datetime
 
 # Force reload to bust Streamlit Cloud module cache
@@ -39,6 +40,7 @@ from utils import (
     get_section_list,
     get_likert_label,
     save_responses_to_csv,
+    save_responses_to_google_sheets,
     build_background_css,
     CUSTOM_CSS,
     CSV_PATH,
@@ -89,6 +91,7 @@ def init_session_state():
         "completed_at": None,
         "is_gsheets_saved": None,
         "gsheets_fail_reason": "",
+        "gsheets_retry_attempted": False,
     }
     for key, val in defaults.items():
         if key not in st.session_state:
@@ -838,125 +841,65 @@ def show_open_ended():
 # ──────────────────────────────────────────────────────────────────────
 # Finalise and save
 # ──────────────────────────────────────────────────────────────────────
+def _completion_duration_seconds():
+    """Return survey duration in whole seconds, or an empty string if unavailable."""
+    if not st.session_state.started_at or not st.session_state.completed_at:
+        return ""
+
+    try:
+        start = datetime.fromisoformat(st.session_state.started_at)
+        end = datetime.fromisoformat(st.session_state.completed_at)
+        return str(int((end - start).total_seconds()))
+    except Exception:
+        return ""
+
+
+def _save_current_responses(include_local_backup=True):
+    """Save the current session responses and store the Google Sheets result."""
+    duration = _completion_duration_seconds()
+    save_kwargs = {
+        "participant_id": st.session_state.participant_id,
+        "group": st.session_state.group,
+        "responses": st.session_state.responses,
+        "started_at": st.session_state.started_at or "",
+        "completed_at": st.session_state.completed_at or "",
+        "duration_seconds": duration,
+    }
+
+    try:
+        if include_local_backup:
+            sheets_ok, error_msg = save_responses_to_csv(**save_kwargs)
+        else:
+            sheets_ok, error_msg = save_responses_to_google_sheets(**save_kwargs)
+    except Exception as e:
+        sheets_ok = False
+        error_msg = f"{type(e).__name__}: {e}\n\n{traceback.format_exc()}"
+
+    if not sheets_ok and not error_msg:
+        error_msg = "Google Sheets save failed but did not return details. Please retry the cloud save."
+
+    st.session_state.is_gsheets_saved = sheets_ok
+    st.session_state.gsheets_fail_reason = error_msg
+    return sheets_ok, error_msg
+
+
+def _needs_stale_gsheets_retry():
+    """Detect completion states created before the current save code ran."""
+    if st.session_state.get("is_gsheets_saved") is not False:
+        return False
+    if st.session_state.get("gsheets_retry_attempted"):
+        return False
+
+    error_msg = st.session_state.get("gsheets_fail_reason", "")
+    return not error_msg or "old code is still cached" in error_msg
+
+
 def _finalise_and_save():
     """Persist responses to CSV and transition to the completion screen."""
     if not st.session_state.is_survey_finished:
         st.session_state.completed_at = datetime.now().isoformat()
-
-        # Calculate duration
-        duration = ""
-        if st.session_state.started_at:
-            try:
-                start = datetime.fromisoformat(st.session_state.started_at)
-                end = datetime.fromisoformat(st.session_state.completed_at)
-                duration = str(int((end - start).total_seconds()))
-            except Exception:
-                duration = ""
-
-        # ── Inline Google Sheets save (bypasses cached utils.py) [v10] ──
-        sheets_ok = False
-        error_msg = "[v10-save-ran] "
-        try:
-            import gspread
-            from google.oauth2.service_account import Credentials
-            from questions import HORIZONTAL_COLUMNS, HORIZONTAL_TITLES
-            import time as _time
-
-            pid = st.session_state.participant_id
-            group = st.session_state.group
-            responses = st.session_state.responses
-
-            # Build horizontal row
-            row_dict = {
-                "participant_id": pid,
-                "group": group,
-                "started_at": st.session_state.started_at or "",
-                "completed_at": st.session_state.completed_at,
-                "duration_seconds": duration,
-            }
-            for q_id, data in responses.items():
-                row_dict[q_id] = data["response"]
-            # Clean and format row values safely to prevent NoneType API errors
-            row_values = []
-            for col in HORIZONTAL_COLUMNS:
-                val = row_dict.get(col)
-                if val is None:
-                    row_values.append("")
-                else:
-                    row_values.append(str(val))
-
-            # Connect to Google Sheets
-            gsheets_config = st.secrets["connections"]["gsheets"]
-            sa_raw = dict(gsheets_config["service_account"])
-            service_account_info = {
-                "type": str(sa_raw.get("type", "")),
-                "project_id": str(sa_raw.get("project_id", "")),
-                "private_key_id": str(sa_raw.get("private_key_id", "")),
-                "private_key": str(sa_raw.get("private_key", "")),
-                "client_email": str(sa_raw.get("client_email", "")),
-                "client_id": str(sa_raw.get("client_id", "")),
-                "auth_uri": str(sa_raw.get("auth_uri", "")),
-                "token_uri": str(sa_raw.get("token_uri", "")),
-                "auth_provider_x509_cert_url": str(sa_raw.get("auth_provider_x509_cert_url", "")),
-                "client_x509_cert_url": str(sa_raw.get("client_x509_cert_url", "")),
-                "universe_domain": str(sa_raw.get("universe_domain", "googleapis.com")),
-            }
-            creds = Credentials.from_service_account_info(
-                service_account_info,
-                scopes=["https://www.googleapis.com/auth/spreadsheets",
-                         "https://www.googleapis.com/auth/drive"],
-            )
-            gc = gspread.authorize(creds)
-            # Use the new spreadsheet URL directly so we don't depend on Streamlit secrets updating
-            new_sheet_url = "https://docs.google.com/spreadsheets/d/1dYd6qOv-vMUkZ2MG_tVdhKnf5DOWE2lArKF1qe8Me5I/edit?pli=1&gid=0#gid=0"
-            spreadsheet = gc.open_by_url(new_sheet_url)
-            ws = spreadsheet.sheet1
-
-            # Ensure headers exist
-            cell_a1 = ws.cell(1, 1).value
-            if not cell_a1 or cell_a1 != "participant_id":
-                if ws.col_count < len(HORIZONTAL_COLUMNS):
-                    ws.resize(cols=len(HORIZONTAL_COLUMNS))
-                ws.update(values=[HORIZONTAL_COLUMNS, HORIZONTAL_TITLES], range_name='A1')
-
-            # Dedup check
-            try:
-                pid_col = ws.col_values(1)
-                if pid in pid_col[2:]:
-                    sheets_ok = True
-                    error_msg = ""
-                else:
-                    ws.append_rows([row_values], value_input_option="USER_ENTERED")
-                    sheets_ok = True
-                    error_msg = ""
-            except Exception:
-                ws.append_rows([row_values], value_input_option="USER_ENTERED")
-                sheets_ok = True
-                error_msg = ""
-
-        except Exception as e:
-            import traceback
-            sheets_ok = False
-            error_msg = f"[v10-save-ran] {type(e).__name__}: {e}\n\n{traceback.format_exc()}"
-
-        # Also save local CSV backup
-        try:
-            save_responses_to_csv(
-                participant_id=st.session_state.participant_id,
-                group=st.session_state.group,
-                responses=st.session_state.responses,
-                started_at=st.session_state.started_at or "",
-                completed_at=st.session_state.completed_at,
-                duration_seconds=duration,
-            )
-        except Exception:
-            pass  # Local backup is non-critical
-
-        if not sheets_ok and not error_msg:
-            error_msg = "Unknown error — save returned False with no details"
+        _save_current_responses(include_local_backup=True)
         st.session_state.is_survey_finished = True
-        st.session_state.is_gsheets_saved = sheets_ok
-        st.session_state.gsheets_fail_reason = error_msg
 
     st.session_state.app_stage = "complete"
     st.rerun()
@@ -966,6 +909,12 @@ def _finalise_and_save():
 # SCREEN: Completion / Thank-you
 # ──────────────────────────────────────────────────────────────────────
 def show_completion():
+    if _needs_stale_gsheets_retry():
+        st.session_state.gsheets_retry_attempted = True
+        with st.spinner("Retrying cloud save..."):
+            _save_current_responses(include_local_backup=False)
+        st.rerun()
+
     # Reset background to a calm finish gradient
     st.markdown(
         build_background_css("trust"),
@@ -981,8 +930,12 @@ def show_completion():
     if not sheets_ok:
         err_detail = st.session_state.get('gsheets_fail_reason', 'Unknown error')
         if not err_detail:
-            err_detail = "ERROR WAS EMPTY — this means the old code is still cached"
-        st.error(f"⚠️ [v22] Google Sheets save failed:\n\n{err_detail}")
+            err_detail = "Google Sheets save failed but did not return details. Please retry the cloud save."
+        st.error(f"⚠️ Google Sheets save failed:\n\n{err_detail}")
+        if st.button("Retry cloud save", key="retry_gsheets_save", use_container_width=True):
+            with st.spinner("Retrying cloud save..."):
+                _save_current_responses(include_local_backup=False)
+            st.rerun()
 
     # Determine status-dependent styling
     if sheets_ok:

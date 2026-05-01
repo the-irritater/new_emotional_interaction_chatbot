@@ -138,17 +138,19 @@ def _get_gsheets_client():
         raise ValueError("Missing 'connections.gsheets.service_account' in Streamlit secrets.")
 
     gsheets_config = st.secrets["connections"]["gsheets"]
-    spreadsheet_url = gsheets_config["spreadsheet"]
-    sa = gsheets_config["service_account"]
+    spreadsheet_url = str(gsheets_config.get("spreadsheet", "")).strip()
+    if not spreadsheet_url:
+        raise ValueError("Missing 'connections.gsheets.spreadsheet' in Streamlit secrets.")
 
     # Step 2: Build service account info — convert from Streamlit's AttrDict to plain dict
     # st.secrets returns special objects that can cause issues with google-auth
     sa_raw = dict(gsheets_config["service_account"])
+    private_key = str(sa_raw.get("private_key", "")).replace("\\n", "\n").strip()
     service_account_info = {
         "type": str(sa_raw.get("type", "")),
         "project_id": str(sa_raw.get("project_id", "")),
         "private_key_id": str(sa_raw.get("private_key_id", "")),
-        "private_key": str(sa_raw.get("private_key", "")),
+        "private_key": private_key,
         "client_email": str(sa_raw.get("client_email", "")),
         "client_id": str(sa_raw.get("client_id", "")),
         "auth_uri": str(sa_raw.get("auth_uri", "")),
@@ -158,7 +160,19 @@ def _get_gsheets_client():
         "universe_domain": str(sa_raw.get("universe_domain", "googleapis.com")),
     }
     # Verify no empty required fields
-    empty_keys = [k for k, v in service_account_info.items() if not v]
+    required_keys = [
+        "type",
+        "project_id",
+        "private_key_id",
+        "private_key",
+        "client_email",
+        "client_id",
+        "auth_uri",
+        "token_uri",
+        "auth_provider_x509_cert_url",
+        "client_x509_cert_url",
+    ]
+    empty_keys = [k for k in required_keys if not service_account_info.get(k)]
     if empty_keys:
         raise ValueError(f"Empty service account fields: {empty_keys}")
 
@@ -200,10 +214,17 @@ def _build_horizontal_row(
     }
     # Map question_id → response value
     for q_id, data in responses.items():
-        row_dict[q_id] = data["response"]
+        if isinstance(data, dict):
+            row_dict[q_id] = data.get("response", "")
+        else:
+            row_dict[q_id] = data
 
-    # Build ordered list matching HORIZONTAL_COLUMNS
-    return [str(row_dict.get(col, "")) for col in HORIZONTAL_COLUMNS]
+    # Build ordered list matching HORIZONTAL_COLUMNS.
+    row_values = []
+    for col in HORIZONTAL_COLUMNS:
+        value = row_dict.get(col, "")
+        row_values.append("" if value is None else str(value))
+    return row_values
 
 
 def _save_to_google_sheets_horizontal(row_values: list) -> tuple:
@@ -254,6 +275,9 @@ def _save_to_google_sheets_horizontal(row_values: list) -> tuple:
                     print(f"   📐 Resized to {len(HORIZONTAL_COLUMNS)} columns")
                 worksheet.update(values=[HORIZONTAL_COLUMNS, HORIZONTAL_TITLES], range_name='A1')
                 print("   ✅ Headers written")
+            elif worksheet.col_count < len(HORIZONTAL_COLUMNS):
+                worksheet.resize(cols=len(HORIZONTAL_COLUMNS))
+                print(f"   📐 Resized to {len(HORIZONTAL_COLUMNS)} columns")
 
             # Step 3: Deduplication check
             pid = row_values[0]
@@ -304,6 +328,26 @@ def _save_to_csv_horizontal(row_values: list):
         writer.writerow(row_values)
 
     print(f"✅ Local CSV: Saved 1 horizontal row to {CSV_PATH}")
+
+
+def save_responses_to_google_sheets(
+    participant_id: str,
+    group: str,
+    responses: dict,
+    started_at: str = "",
+    completed_at: str = "",
+    duration_seconds: str = "",
+) -> tuple:
+    """
+    Save all responses as a SINGLE horizontal row to Google Sheets only.
+    Returns (sheets_ok, error_message).
+    """
+    row_values = _build_horizontal_row(
+        participant_id, group, responses,
+        started_at, completed_at, duration_seconds,
+    )
+    sheets_ok, error_msg, _ = _save_to_google_sheets_horizontal(row_values)
+    return sheets_ok, error_msg
 
 
 def save_responses_to_csv(
