@@ -876,7 +876,11 @@ def _save_current_responses(include_local_backup=True):
         error_msg = f"{type(e).__name__}: {e}\n\n{traceback.format_exc()}"
 
     if not sheets_ok and not error_msg:
-        error_msg = "Google Sheets save failed but did not return details. Please retry the cloud save."
+        error_msg = (
+            "Google Sheets save returned False without an exception or error message. "
+            "This indicates an internal save helper bug; check the Streamlit Cloud logs "
+            "for the matching save attempt."
+        )
 
     st.session_state.is_gsheets_saved = sheets_ok
     st.session_state.gsheets_fail_reason = error_msg
@@ -930,8 +934,12 @@ def show_completion():
     if not sheets_ok:
         err_detail = st.session_state.get('gsheets_fail_reason', 'Unknown error')
         if not err_detail:
-            err_detail = "Google Sheets save failed but did not return details. Please retry the cloud save."
-        st.error(f"⚠️ Google Sheets save failed:\n\n{err_detail}")
+            err_detail = (
+                "Google Sheets save returned False without an exception or error message. "
+                "This indicates an internal save helper bug."
+            )
+        st.error("⚠️ Google Sheets save failed. Full error details:")
+        st.code(err_detail, language="text")
         if st.button("Retry cloud save", key="retry_gsheets_save", use_container_width=True):
             with st.spinner("Retrying cloud save..."):
                 _save_current_responses(include_local_backup=False)

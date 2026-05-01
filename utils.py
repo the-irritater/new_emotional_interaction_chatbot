@@ -227,25 +227,51 @@ def _build_horizontal_row(
     return row_values
 
 
+def _format_gsheets_error(operation: str, error: Exception, attempt: int, max_attempts: int) -> str:
+    """Return a full Google Sheets failure report for display in Streamlit."""
+    import traceback
+
+    return (
+        f"Google Sheets save failed during: {operation}\n"
+        f"Attempt: {attempt}/{max_attempts}\n"
+        f"Exception type: {type(error).__name__}\n"
+        f"Exception message: {error}\n\n"
+        f"Traceback:\n{traceback.format_exc()}"
+    )
+
+
+def _horizontal_range(row_number: int, column_count: int) -> str:
+    """Build an A1 range for one full horizontal response row."""
+    from gspread.utils import rowcol_to_a1
+
+    return f"A{row_number}:{rowcol_to_a1(row_number, column_count)}"
+
+
 def _save_to_google_sheets_horizontal(row_values: list) -> tuple:
     """
-    Append a single horizontal row to Google Sheets.
-    Checks for duplicate participant_id before appending.
+    Write a single horizontal row to the next available Google Sheets row.
+    Checks for duplicate participant_id before writing.
     Returns (True, "", client) on success, (False, error_msg, None) on failure.
     """
     import time as _time
     MAX_RETRIES = 2
 
     for attempt in range(MAX_RETRIES + 1):
+        operation = "starting Google Sheets save"
         try:
-            print(f"🔄 Google Sheets save attempt {attempt + 1}/{MAX_RETRIES + 1}...")
+            attempt_number = attempt + 1
+            max_attempts = MAX_RETRIES + 1
+            print(f"🔄 Google Sheets save attempt {attempt_number}/{max_attempts}...")
 
             # Step 1: Get client
+            operation = "connect to spreadsheet"
             gc, spreadsheet = _get_gsheets_client()
+            operation = "open first worksheet tab"
             worksheet = spreadsheet.sheet1
             print(f"   ✅ Connected. Sheet has {worksheet.row_count} rows, {worksheet.col_count} cols")
 
             # Step 2: Check/write headers
+            operation = "read header cell A1"
             needs_headers = False
             if worksheet.row_count == 0:
                 needs_headers = True
@@ -257,43 +283,61 @@ def _save_to_google_sheets_horizontal(row_values: list) -> tuple:
                     needs_headers = True
                 elif cell_val == "participant_id":
                     # Verify it's horizontal format (col C should be started_at)
+                    operation = "read header cell C1"
                     col_c = worksheet.cell(1, 3).value
                     print(f"   📋 Cell C1 = '{col_c}'")
                     if col_c and col_c in ("section", "question_id"):
                         print("   🔄 Old vertical format detected — clearing...")
+                        operation = "clear worksheet with old vertical format"
                         worksheet.clear()
                         needs_headers = True
                     # else: horizontal format is correct
                 else:
                     print(f"   ⚠️ Unknown format in A1: '{cell_val}' — clearing...")
+                    operation = "clear worksheet with unknown format"
                     worksheet.clear()
                     needs_headers = True
 
             if needs_headers:
                 if worksheet.col_count < len(HORIZONTAL_COLUMNS):
+                    operation = "resize worksheet columns for horizontal headers"
                     worksheet.resize(cols=len(HORIZONTAL_COLUMNS))
                     print(f"   📐 Resized to {len(HORIZONTAL_COLUMNS)} columns")
-                worksheet.update(values=[HORIZONTAL_COLUMNS, HORIZONTAL_TITLES], range_name='A1')
+                header_end_cell = _horizontal_range(2, len(HORIZONTAL_COLUMNS)).split(":")[1]
+                operation = f"write horizontal headers to A1:{header_end_cell}"
+                worksheet.update(
+                    values=[HORIZONTAL_COLUMNS, HORIZONTAL_TITLES],
+                    range_name=f"A1:{header_end_cell}",
+                    value_input_option="USER_ENTERED",
+                )
                 print("   ✅ Headers written")
             elif worksheet.col_count < len(HORIZONTAL_COLUMNS):
+                operation = "resize worksheet columns for horizontal response row"
                 worksheet.resize(cols=len(HORIZONTAL_COLUMNS))
                 print(f"   📐 Resized to {len(HORIZONTAL_COLUMNS)} columns")
 
             # Step 3: Deduplication check
             pid = row_values[0]
-            try:
-                pid_col = worksheet.col_values(1)
-                if pid in pid_col[2:]:
-                    print(f"   ⚠️ Participant {pid} already exists — skipping")
-                    return True, "", (gc, spreadsheet)
-                print(f"   ✅ No duplicate found for {pid}")
-            except Exception as dedup_err:
-                print(f"   ⚠️ Dedup check failed (non-fatal): {dedup_err}")
+            operation = "read participant IDs for duplicate check"
+            pid_col = worksheet.col_values(1)
+            if pid in pid_col[2:]:
+                print(f"   ⚠️ Participant {pid} already exists — skipping")
+                return True, "", (gc, spreadsheet)
+            print(f"   ✅ No duplicate found for {pid}")
 
-            # Step 4: Append the row
-            print(f"   📝 Appending row ({len(row_values)} columns)...")
-            worksheet.append_rows(
-                [row_values],
+            # Step 4: Write one horizontal response row to an explicit range.
+            next_row = max(len(pid_col) + 1, 3)
+            if worksheet.row_count < next_row:
+                operation = f"resize worksheet rows for row {next_row}"
+                worksheet.resize(rows=next_row)
+                print(f"   📐 Resized to {next_row} rows")
+
+            row_range = _horizontal_range(next_row, len(row_values))
+            operation = f"write horizontal response row to {row_range}"
+            print(f"   📝 Writing horizontal row to {row_range} ({len(row_values)} columns)...")
+            worksheet.update(
+                values=[row_values],
+                range_name=row_range,
                 value_input_option="USER_ENTERED",
             )
 
@@ -301,22 +345,22 @@ def _save_to_google_sheets_horizontal(row_values: list) -> tuple:
             return True, "", (gc, spreadsheet)
 
         except Exception as e:
-            import traceback
-            full_trace = traceback.format_exc()
-            error_summary = f"{type(e).__name__}: {e}"
-            print(f"   ❌ Attempt {attempt + 1} failed: {error_summary}")
-            print(full_trace)
+            attempt_number = attempt + 1
+            max_attempts = MAX_RETRIES + 1
+            error_msg = _format_gsheets_error(operation, e, attempt_number, max_attempts)
+            print(f"   ❌ Attempt {attempt_number} failed during {operation}: {type(e).__name__}: {e}")
+            print(error_msg)
 
             if attempt < MAX_RETRIES:
                 wait = 2 ** attempt
                 print(f"   ⏳ Retrying in {wait}s...")
                 _time.sleep(wait)
             else:
-                return False, f"Failed after {MAX_RETRIES + 1} attempts.\n\nLast error:\n{error_summary}\n\nFull traceback:\n{full_trace}", None
+                return False, error_msg, None
 
 
 def _save_to_csv_horizontal(row_values: list):
-    """Append a single horizontal row to the local CSV file."""
+    """Write a single horizontal row to the local CSV backup file."""
     ensure_data_dir()
     file_exists = os.path.isfile(CSV_PATH) and os.path.getsize(CSV_PATH) > 0
 
