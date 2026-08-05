@@ -2,7 +2,7 @@
 
 A production-ready **Streamlit** web application for collecting structured research questionnaire responses through an interactive chatbot-style interface. Designed for academic research on emotional interaction with artificial intelligence.
 
----
+-
 
 ## Features
 
@@ -20,7 +20,7 @@ A production-ready **Streamlit** web application for collecting structured resea
 - **Mobile Responsive** — Optimised for both desktop and mobile viewports with touch-friendly interactions
 - **Download Option** — Participants can download their own responses after completion
 
----
+-
 
 ## Survey Flow
 
@@ -28,13 +28,13 @@ A production-ready **Streamlit** web application for collecting structured resea
 Welcome → Screening → Demographics → Personality → [Usage / Non-Use Reasons] → Questionnaire → Open-Ended (optional) → Completion
 ```
 
----
+-
 
 ## Questionnaire Structure
 
 ### Non-User Path (22 questions · ~5–7 minutes)
 | Section | Items |
-|---|---|
+|-|-|
 | Personality Assessment | 8 |
 | Reasons for Not Using AI (multi-select) | 1 |
 | Perceived Authenticity of AI | 4 |
@@ -43,7 +43,7 @@ Welcome → Screening → Demographics → Personality → [Usage / Non-Use Reas
 
 ### User Path (47 questions · ~8–12 minutes)
 | Section | Items |
-|---|---|
+|-|-|
 | Personality Assessment | 8 |
 | AI Usage Frequency & Duration | 2 |
 | Motivation to Use AI | 8 |
@@ -54,7 +54,7 @@ Welcome → Screening → Demographics → Personality → [Usage / Non-Use Reas
 | AI vs Human — Hypothetical Scenarios | 6 |
 | Future Use of AI for Emotional Support | 3 |
 
----
+-
 
 ## Project Structure
 
@@ -79,7 +79,7 @@ new_emotional_interaction_chatbot/
 └── README.md                 # This file
 ```
 
----
+-
 
 ## How to Run
 
@@ -114,7 +114,7 @@ new_emotional_interaction_chatbot/
 
 5. Open **http://localhost:8501** in your browser.
 
----
+-
 
 ## Google Sheets Integration
 
@@ -134,21 +134,21 @@ The application saves all responses to a Google Sheet in horizontal (one-row-per
    type = "service_account"
    project_id = "your-project-id"
    private_key_id = "your-key-id"
-   private_key = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+   private_key = "-BEGIN PRIVATE KEY-\n...\n-END PRIVATE KEY-\n"
    client_email = "your-service-account@your-project.iam.gserviceaccount.com"
    client_id = "123456789"
    auth_uri = "https://accounts.google.com/o/oauth2/auth"
    token_uri = "https://oauth2.googleapis.com/token"
    ```
 
----
+-
 
 ## Data Output
 
 ### Response Data (Google Sheet `Sheet1` — first worksheet tab)
 
 | Column | Description |
-|---|---|
+|-|-|
 | `participant_id` | Unique anonymous ID (e.g., `P-3A7F2C01`) |
 | `group` | `User` or `Non-User` |
 | `section` | Questionnaire section name |
@@ -161,7 +161,7 @@ The application saves all responses to a Google Sheet in horizontal (one-row-per
 | `completed_at` | When the participant finished |
 | `duration_seconds` | Total time spent |
 
----
+-
 
 ## Deployment
 
@@ -178,12 +178,12 @@ The application saves all responses to a Google Sheet in horizontal (one-row-per
 FROM python:3.11-slim
 WORKDIR /app
 COPY . .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install -no-cache-dir -r requirements.txt
 EXPOSE 8501
-CMD ["streamlit", "run", "app.py", "--server.port=8501"]
+CMD ["streamlit", "run", "app.py", "-server.port=8501"]
 ```
 
----
+-
 
 ## Research Ethics
 
@@ -192,13 +192,13 @@ CMD ["streamlit", "run", "app.py", "--server.port=8501"]
 - UI is designed to be neutral and non-biasing
 - Informed consent notice is displayed before participation
 
----
+-
 
 ## License
 
 This project is developed for academic research purposes. Please cite appropriately if used in publications.
 
----
+-
 
 ## Acknowledgements
 

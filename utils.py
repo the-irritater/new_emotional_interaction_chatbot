@@ -18,9 +18,9 @@ from typing import Dict, List, Optional
 from questions import LIKERT_LABELS, SECTION_BACKGROUNDS, HORIZONTAL_COLUMNS, HORIZONTAL_TITLES
 
 
-# ---------------------------------------------------------------------------
+# -
 # Paths
-# ---------------------------------------------------------------------------
+# -
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(_BASE_DIR, "data")
 ASSETS_DIR = os.path.join(_BASE_DIR, "assets")
@@ -47,24 +47,24 @@ _BG_IMAGE_MAP = {
 }
 
 
-# ---------------------------------------------------------------------------
+# -
 # Participant ID
-# ---------------------------------------------------------------------------
+# -
 def generate_participant_id() -> str:
     """Generate a unique, anonymous participant identifier."""
     return f"P-{uuid.uuid4().hex[:8].upper()}"
 
 
-# ---------------------------------------------------------------------------
+# -
 # Question list builder
-# ---------------------------------------------------------------------------
+# -
 def build_question_list(sections: OrderedDict) -> list:
     """
     Flatten an ordered dict of sections into a sequential list of question
     dicts, each carrying section metadata.
 
     Returns
-    -------
+    -
     list[dict]
         Each dict: {
             "id": "section_key_Q1",
@@ -105,17 +105,17 @@ def get_section_list(sections: OrderedDict) -> list:
     ]
 
 
-# ---------------------------------------------------------------------------
+# -
 # Likert helpers
-# ---------------------------------------------------------------------------
+# -
 def get_likert_label(value: int) -> str:
     """Return the text label for a numeric Likert value."""
     return LIKERT_LABELS.get(value, str(value))
 
 
-# ---------------------------------------------------------------------------
+# -
 # Data persistence (Google Sheets + CSV — dual save)
-# ---------------------------------------------------------------------------
+# -
 def ensure_data_dir():
     """Create the data directory if it does not exist."""
     os.makedirs(DATA_DIR, exist_ok=True)
@@ -151,8 +151,8 @@ def _get_gsheets_client():
     private_key = raw_key.replace("\\n", "\n").replace("\\r", "\r").strip()
     
     # Truly robust PEM reconstruction
-    header = "-----BEGIN PRIVATE KEY-----"
-    footer = "-----END PRIVATE KEY-----"
+    header = "-BEGIN PRIVATE KEY-"
+    footer = "-END PRIVATE KEY-"
     if header in private_key and footer in private_key:
         b64 = private_key.split(header)[1].split(footer)[0]
         # Since literal \n are replaced, we can safely strip all whitespace/newlines
@@ -209,7 +209,7 @@ def _get_gsheets_client():
 
     # Step 4: Open spreadsheet
     spreadsheet = gc.open_by_url(spreadsheet_url)
-    print(f"📊 Connected to sheet: {spreadsheet.title}")
+    print(f" Connected to sheet: {spreadsheet.title}")
     return gc, spreadsheet
 
 
@@ -276,7 +276,7 @@ def _get_responses_worksheet(spreadsheet):
     except gspread.exceptions.WorksheetNotFound:
         worksheet = spreadsheet.sheet1
         print(
-            f"   ⚠️ Worksheet tab '{RESPONSES_WORKSHEET_NAME}' was not found; "
+            f"    Worksheet tab '{RESPONSES_WORKSHEET_NAME}' was not found; "
             f"using first worksheet tab '{worksheet.title}' instead"
         )
         return worksheet
@@ -296,7 +296,7 @@ def _save_to_google_sheets_horizontal(row_values: list) -> tuple:
         try:
             attempt_number = attempt + 1
             max_attempts = MAX_RETRIES + 1
-            print(f"🔄 Google Sheets save attempt {attempt_number}/{max_attempts}...")
+            print(f" Google Sheets save attempt {attempt_number}/{max_attempts}...")
 
             # Step 1: Get client
             operation = "connect to spreadsheet"
@@ -304,7 +304,7 @@ def _save_to_google_sheets_horizontal(row_values: list) -> tuple:
             operation = f"open worksheet tab '{RESPONSES_WORKSHEET_NAME}' or first worksheet tab"
             worksheet = _get_responses_worksheet(spreadsheet)
             print(
-                f"   ✅ Connected to worksheet '{worksheet.title}'. "
+                f"    Connected to worksheet '{worksheet.title}'. "
                 f"Sheet has {worksheet.row_count} rows, {worksheet.col_count} cols"
             )
 
@@ -313,25 +313,25 @@ def _save_to_google_sheets_horizontal(row_values: list) -> tuple:
             needs_headers = False
             if worksheet.row_count == 0:
                 needs_headers = True
-                print("   ⚠️ Sheet is empty, will write headers")
+                print("    Sheet is empty, will write headers")
             else:
                 cell_val = worksheet.cell(1, 1).value
-                print(f"   📋 Cell A1 = '{cell_val}'")
+                print(f"    Cell A1 = '{cell_val}'")
                 if not cell_val:
                     needs_headers = True
                 elif cell_val == "participant_id":
                     # Verify it's horizontal format (col C should be started_at)
                     operation = "read header cell C1"
                     col_c = worksheet.cell(1, 3).value
-                    print(f"   📋 Cell C1 = '{col_c}'")
+                    print(f"    Cell C1 = '{col_c}'")
                     if col_c and col_c in ("section", "question_id"):
-                        print("   🔄 Old vertical format detected — clearing...")
+                        print("    Old vertical format detected — clearing...")
                         operation = "clear worksheet with old vertical format"
                         worksheet.clear()
                         needs_headers = True
                     # else: horizontal format is correct
                 else:
-                    print(f"   ⚠️ Unknown format in A1: '{cell_val}' — clearing...")
+                    print(f"    Unknown format in A1: '{cell_val}' — clearing...")
                     operation = "clear worksheet with unknown format"
                     worksheet.clear()
                     needs_headers = True
@@ -340,7 +340,7 @@ def _save_to_google_sheets_horizontal(row_values: list) -> tuple:
                 if worksheet.col_count < len(HORIZONTAL_COLUMNS):
                     operation = "resize worksheet columns for horizontal headers"
                     worksheet.resize(cols=len(HORIZONTAL_COLUMNS))
-                    print(f"   📐 Resized to {len(HORIZONTAL_COLUMNS)} columns")
+                    print(f"    Resized to {len(HORIZONTAL_COLUMNS)} columns")
                 header_end_cell = _horizontal_range(2, len(HORIZONTAL_COLUMNS)).split(":")[1]
                 operation = f"write horizontal headers to A1:{header_end_cell}"
                 worksheet.update(
@@ -348,45 +348,45 @@ def _save_to_google_sheets_horizontal(row_values: list) -> tuple:
                     range_name=f"A1:{header_end_cell}",
                     value_input_option="USER_ENTERED",
                 )
-                print("   ✅ Headers written")
+                print("    Headers written")
             elif worksheet.col_count < len(HORIZONTAL_COLUMNS):
                 operation = "resize worksheet columns for horizontal response row"
                 worksheet.resize(cols=len(HORIZONTAL_COLUMNS))
-                print(f"   📐 Resized to {len(HORIZONTAL_COLUMNS)} columns")
+                print(f"    Resized to {len(HORIZONTAL_COLUMNS)} columns")
 
             # Step 3: Deduplication check
             pid = row_values[0]
             operation = "read participant IDs for duplicate check"
             pid_col = worksheet.col_values(1)
             if pid in pid_col[2:]:
-                print(f"   ⚠️ Participant {pid} already exists — skipping")
+                print(f"    Participant {pid} already exists — skipping")
                 return True, "", (gc, spreadsheet)
-            print(f"   ✅ No duplicate found for {pid}")
+            print(f"    No duplicate found for {pid}")
 
             # Step 4: Write one horizontal response row to an explicit range.
             next_row = max(len(pid_col) + 1, 3)
             if worksheet.row_count < next_row:
                 operation = f"resize worksheet rows for row {next_row}"
                 worksheet.resize(rows=next_row)
-                print(f"   📐 Resized to {next_row} rows")
+                print(f"    Resized to {next_row} rows")
 
             row_range = _horizontal_range(next_row, len(row_values))
             operation = f"write horizontal response row to {row_range}"
-            print(f"   📝 Writing horizontal row to {row_range} ({len(row_values)} columns)...")
+            print(f"    Writing horizontal row to {row_range} ({len(row_values)} columns)...")
             worksheet.update(
                 values=[row_values],
                 range_name=row_range,
                 value_input_option="USER_ENTERED",
             )
 
-            print(f"   ✅ Google Sheets: Saved row for {pid}")
+            print(f"    Google Sheets: Saved row for {pid}")
             return True, "", (gc, spreadsheet)
 
         except Exception as e:
             attempt_number = attempt + 1
             max_attempts = MAX_RETRIES + 1
             error_msg = _format_gsheets_error(operation, e, attempt_number, max_attempts)
-            print(f"   ❌ Attempt {attempt_number} failed during {operation}: {type(e).__name__}: {e}")
+            print(f"    Attempt {attempt_number} failed during {operation}: {type(e).__name__}: {e}")
             print(error_msg)
 
             if attempt < MAX_RETRIES:
@@ -420,9 +420,9 @@ def save_responses_to_google_sheets(
 
 
 
-# ---------------------------------------------------------------------------
+# -
 # Background image helpers
-# ---------------------------------------------------------------------------
+# -
 @lru_cache(maxsize=10)
 def _load_bg_image_b64(filename: str) -> Optional[str]:
     """Load a background image from assets/ and return as base64 string."""
@@ -433,9 +433,9 @@ def _load_bg_image_b64(filename: str) -> Optional[str]:
         return base64.b64encode(f.read()).decode("utf-8")
 
 
-# ---------------------------------------------------------------------------
+# -
 # CSS injection helpers
-# ---------------------------------------------------------------------------
+# -
 def get_background_gradient(background_key: str) -> str:
     """Return the CSS gradient string for a given background theme key."""
     return SECTION_BACKGROUNDS.get(
@@ -459,9 +459,9 @@ def build_background_css(background_key: str) -> str:
     """
 
 
-# ---------------------------------------------------------------------------
+# -
 # Progress ring SVG builder
-# ---------------------------------------------------------------------------
+# -
 def build_progress_ring(percent: int) -> str:
     """
     Build an SVG circular progress ring.
@@ -481,12 +481,12 @@ def build_progress_ring(percent: int) -> str:
                     <stop offset="100%" style="stop-color:#a855f7;stop-opacity:1" />
                 </linearGradient>
             </defs>
-            <!-- Background circle -->
+            <!- Background circle ->
             <circle cx="90" cy="90" r="{radius}"
                     fill="none"
                     stroke="rgba(255,255,255,0.08)"
                     stroke-width="{stroke_width}"/>
-            <!-- Progress arc -->
+            <!- Progress arc ->
             <circle cx="90" cy="90" r="{radius}"
                     fill="none"
                     stroke="url(#progressGrad)"
@@ -496,7 +496,7 @@ def build_progress_ring(percent: int) -> str:
                     stroke-dashoffset="{offset}"
                     transform="rotate(-90 90 90)"
                     style="transition: stroke-dashoffset 0.8s ease;"/>
-            <!-- Percentage text -->
+            <!- Percentage text ->
             <text x="90" y="82" text-anchor="middle"
                   fill="white" font-size="32" font-weight="700"
                   font-family="Inter, sans-serif">{percent}%</text>
@@ -522,7 +522,7 @@ def build_section_progress_html(sections: list, current_section_key: str, comple
         if key in completed_sections:
             status_class = "completed"
             status_text = "Completed"
-            icon = "✓"
+            icon = ""
             icon_bg = "rgba(74, 222, 128, 0.15)"
             icon_color = "#4ade80"
         elif key == current_section_key:
@@ -553,9 +553,9 @@ def build_section_progress_html(sections: list, current_section_key: str, comple
     return f'<div class="section-progress-list">{items_html}</div>'
 
 
-# ---------------------------------------------------------------------------
+# -
 # Main custom CSS for the entire app
-# ---------------------------------------------------------------------------
+# -
 CUSTOM_CSS = """
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
